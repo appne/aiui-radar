@@ -5,7 +5,19 @@
 </script>
 
 <script setup>
-// rdr-b6: dedicated rain-radar agent (2026-11-13).
+// rdr-b7: dedicated rain-radar agent (2026-11-13).
+// Changes from b6 (user device feedback):
+// - Tap lockout: one physical temple tap could advance the view
+//   TWICE (an extra GlobalHook after the Enter confirm armed a
+//   second tap). After a confirmed tap, further tap gestures are
+//   ignored for 700 ms.
+// - Zooms: the z9 regional view is gone. Both modes are now
+//   near z12 / wide z11 (the old z11 "current" range is the new
+//   wide; near is a 2x zoom of it). Labels are the local set at
+//   both zooms (off-frame ones clip, thinning the near view).
+// - The fixed set is centred on KYOTO STATION, not home — the
+//   startup map must not give away the home location in
+//   screenshots. (View keys stay home/wide for file compat.)
 // Layout: hint line moved ABOVE the image (user device report:
 // text below the image falls outside the visible band).
 // Generation is ON DEMAND inside the laptop listener (RadarGen):
@@ -21,21 +33,22 @@
 // the remembered view + offset. The here mode stages the same
 // way: base-meta-here.json lands first (map), meta-here.json
 // second (rain).
-// - Home mode: frames centred on home; views home (z11) / wide (z9).
+// - Home mode: frames centred on Kyoto Station; views home
+//   (z12, 京都駅周辺) / wide (z11, 京都駅・広域).
 // - Here mode: the page reads navigator.geolocation, POSTs
 //   {lat,lon} to the listener (/radar/request), and polls
 //   meta-here.json until the listener has rendered frames centred
-//   on the current location; views here / widehere.
+//   on the current location; views here (z12) / widehere (z11).
 //   Falls back to home mode when geolocation or generation fails.
-// - Gestures (temple model from kensho b16): tap (GlobalHook arm +
-//   Enter confirm, or a bare Enter) cycles the view; swipe
-//   (ArrowUp/ArrowDown) steps the frame time through the nowcast
-//   forecasts +5/+10/+30/+60 min and back.
+// - Gestures (temple model from kensho b16 + b7 lockout): tap
+//   (GlobalHook arm + Enter confirm, or a bare Enter) cycles the
+//   view; swipe (ArrowUp/ArrowDown) steps the frame time through
+//   the nowcast forecasts +5/+10/+30/+60 min and back.
 // Layout follows the kensho b24 device findings: status above the
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b6',
+    build: 'rdr-b7',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 画面切替 / スワイプ: 時刻'
@@ -44,8 +57,8 @@ export default {
   _token: 'gchat-4c1d9a72',
   _modes: {
     home: { meta: 'meta.json', views: [
-      { key: 'home', label: '自宅周辺' },
-      { key: 'wide', label: '近畿広域' } ] },
+      { key: 'home', label: '京都駅周辺' },
+      { key: 'wide', label: '京都駅・広域' } ] },
     here: { meta: 'meta-here.json', views: [
       { key: 'here', label: '現在地' },
       { key: 'widehere', label: '現在地・広域' } ] }
@@ -55,6 +68,7 @@ export default {
   _fIdx: 0,
   _frames: [{ off: 0, vt: '', display: '' }],
   _tapTimer: null,
+  _tapLockUntil: 0,
   _pollTimer: null,
   _pollLeft: 0,
   _hereReqAt: 0,
@@ -168,7 +182,7 @@ export default {
     } catch (e) { this.hereFailed(); }
   },
   hereFailed() {
-    this.setData({ hint: '現在地が取れませんでした（自宅を表示）' });
+    this.setData({ hint: '現在地が取れませんでした（京都駅を表示）' });
   },
   // Stage 1 of here mode: the listener writes base maps + this
   // meta before rendering frames; switch to the current-location
@@ -266,18 +280,29 @@ export default {
     this._fIdx = n;
     this.applyView();
   },
+  // One physical tap must cycle exactly once. The temple sends
+  // GlobalHook then the gesture key; an extra GlobalHook can
+  // trail the Enter, and without a lockout it armed a second tap
+  // (device report 2026-11-13: wide -> wide). After a confirmed
+  // tap, ignore tap gestures for 700 ms.
+  fireTap() {
+    this._tapLockUntil = Date.now() + 700;
+    this.cycleView();
+  },
   onKeyUp(event) {
     const code = event && event.code;
     if (code === 'GlobalHook') {
       event.preventDefault();
+      if (Date.now() < this._tapLockUntil) return;
       if (this._tapTimer) return;
-      this._tapTimer = setTimeout(() => { this._tapTimer = null; this.cycleView(); }, 300);
+      this._tapTimer = setTimeout(() => { this._tapTimer = null; this.fireTap(); }, 300);
       return;
     }
     if (code === 'Enter') {
       event.preventDefault();
+      if (Date.now() < this._tapLockUntil) return;
       if (this._tapTimer) { clearTimeout(this._tapTimer); this._tapTimer = null; }
-      this.cycleView();
+      this.fireTap();
       return;
     }
     if (code === 'ArrowUp' || code === 'ArrowDown') {
