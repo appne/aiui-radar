@@ -5,6 +5,12 @@ high-resolution precipitation nowcast rendered for the green
 monochrome display (dark base map, rain as a green brightness
 ladder, legend band, frame time baked into the image).
 
+Builds: rdr-b1 = home pipeline viewer. rdr-b2 was a server-side
+step only (forecast frames). rdr-b3 = swipe steps frame time
+(+5/+10/+30/+60), and on open the page geolocates, POSTs
+/radar/request, and polls meta-here.json until frames centred on
+the current location are ready (hook `radar-on-demand`).
+
 Pipeline: the Muse VM regenerates home/wide views every ~5 min
 (hook `radar-refresh`, script ~/workspace/rokid-ios-bridge/radar/
 radar_gen.py) and pushes them to the laptop listener, which serves
