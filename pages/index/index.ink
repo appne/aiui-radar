@@ -5,7 +5,9 @@
 </script>
 
 <script setup>
-// rdr-b5: dedicated rain-radar agent (2026-11-13).
+// rdr-b6: dedicated rain-radar agent (2026-11-13).
+// Layout: hint line moved ABOVE the image (user device report:
+// text below the image falls outside the visible band).
 // Generation is ON DEMAND inside the laptop listener (RadarGen):
 // nothing is rendered periodically. On open the page POSTs a bare
 // /radar/request to trigger a home-set refresh (the listener
@@ -33,7 +35,7 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b5',
+    build: 'rdr-b6',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 画面切替 / スワイプ: 時刻'
@@ -292,8 +294,8 @@ export default {
   <view class="container">
     <text class="title">Radar {{ build }}</text>
     <text class="line sub">{{ status }}</text>
-    <image class="radar" src="{{ imgSrc }}"></image>
     <text class="line hint">{{ hint }}</text>
+    <image class="radar" src="{{ imgSrc }}"></image>
   </view>
 </page>
 
