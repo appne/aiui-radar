@@ -5,12 +5,20 @@
 </script>
 
 <script setup>
-// rdr-b4: dedicated rain-radar agent (2026-11-13).
+// rdr-b5: dedicated rain-radar agent (2026-11-13).
 // Generation is ON DEMAND inside the laptop listener (RadarGen):
 // nothing is rendered periodically. On open the page POSTs a bare
 // /radar/request to trigger a home-set refresh (the listener
-// regenerates only when its stored frame is stale), and polls
-// meta.json to repaint when the fresh frame lands.
+// regenerates only when its stored frame is stale).
+// Staged display (user design): at open, show the base MAP only
+// for the current view — the map itself never changes, so it is
+// served as its own file (base_<view>.png). Scale taps swap the
+// base immediately; time swipes are remembered as the wanted
+// offset. When the rendered frame is ready (meta answered_at /
+// validtime change), the display switches to the rain image at
+// the remembered view + offset. The here mode stages the same
+// way: base-meta-here.json lands first (map), meta-here.json
+// second (rain).
 // - Home mode: frames centred on home; views home (z11) / wide (z9).
 // - Here mode: the page reads navigator.geolocation, POSTs
 //   {lat,lon} to the listener (/radar/request), and polls
@@ -25,7 +33,7 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b4',
+    build: 'rdr-b5',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 画面切替 / スワイプ: 時刻'
@@ -50,9 +58,20 @@ export default {
   _hereReqAt: 0,
   _hereLat: null,
   _hereLon: null,
+  _openAt: 0,
+  _paintedVt: '',
+  _homeReady: false,
+  _hereReady: false,
+  _hereBaseReady: false,
+  _basesAt: 0,
+  _baseLeft: 0,
   pollMs: 3000,
   onLoad() {
-    this.loadMeta('home', () => this.applyView());
+    this._openAt = Math.floor(Date.now() / 1000);
+    this.loadMeta('home', (m) => {
+      if (m && Array.isArray(m.frames) && m.frames.length) this._paintedVt = m.frames[0].vt;
+      this.applyView();
+    });
     this.postOpenPing();
     this.pollHomeFresh();
     this.startHere();
@@ -69,17 +88,26 @@ export default {
       });
     } catch (e) {}
   },
-  // Repaint the home view when the listener's on-demand refresh
-  // lands a newer frame; keeps the current swipe offset.
+  // The home frame counts as ready when the listener has answered
+  // this open (answered_at) or a newer frame has landed; after ~2
+  // min of silence, fall back to the stored (stale) frames.
   pollHomeFresh() {
     let left = 40;
     const step = () => {
-      if (left-- <= 0) return;
+      if (this._homeReady) return;
+      if (left-- <= 0) {
+        this._homeReady = true;
+        if (this._mode === 'home') this.applyView();
+        return;
+      }
       this.loadMeta('home', (m) => {
-        if (this._mode === 'home' && m && Array.isArray(m.frames) && m.frames.length
-            && m.frames[0].vt !== (this._homeVt || '')) {
-          this._homeVt = m.frames[0].vt;
-          this.applyView();
+        const answered = m && typeof m.answered_at === 'number' && m.answered_at >= this._openAt - 5;
+        const newer = m && Array.isArray(m.frames) && m.frames.length
+          && this._paintedVt && m.frames[0].vt !== this._paintedVt;
+        if (answered || newer) {
+          this._homeReady = true;
+          if (this._mode === 'home') this.applyView();
+          return;
         }
         this._homeTimer = setTimeout(step, this.pollMs);
       });
@@ -128,6 +156,8 @@ export default {
             });
           } catch (e) {}
           this._pollLeft = 40;
+          this._baseLeft = 40;
+          this.pollHereBase();
           this.pollHere();
         },
         () => this.hereFailed(),
@@ -137,6 +167,36 @@ export default {
   },
   hereFailed() {
     this.setData({ hint: '現在地が取れませんでした（自宅を表示）' });
+  },
+  // Stage 1 of here mode: the listener writes base maps + this
+  // meta before rendering frames; switch to the current-location
+  // MAP as soon as it matches this request.
+  pollHereBase() {
+    if (this._mode === 'here' || this._baseLeft <= 0) return;
+    this._baseLeft--;
+    try {
+      wx.request({
+        url: this._base + 'base-meta-here.json',
+        success: (res) => {
+          const m = (res && res.data) || {};
+          const ctr = Array.isArray(m.centre) ? m.centre : null;
+          const fresh = typeof m.bases_at === 'number' && m.bases_at >= this._hereReqAt - 660;
+          const near = ctr && Math.abs(ctr[0] - this._hereLat) + Math.abs(ctr[1] - this._hereLon) <= 0.02;
+          if (ctr && fresh && near) {
+            this._mode = 'here';
+            this._view = 0;
+            this._hereBaseReady = true;
+            this._basesAt = m.bases_at;
+            this.applyView();
+            return;
+          }
+          this._baseTimer = setTimeout(() => this.pollHereBase(), this.pollMs);
+        },
+        fail: () => { this._baseTimer = setTimeout(() => this.pollHereBase(), this.pollMs); }
+      });
+    } catch (e) {
+      this._baseTimer = setTimeout(() => this.pollHereBase(), this.pollMs);
+    }
   },
   pollHere() {
     if (this._pollLeft <= 0) {
@@ -155,8 +215,9 @@ export default {
           if (ctr && fresh && near && Array.isArray(m.frames) && m.frames.length) {
             this._mode = 'here';
             this._view = 0;
-            this._fIdx = 0;
+            if (this._fIdx >= m.frames.length) this._fIdx = 0;
             this._frames = m.frames;
+            this._hereReady = true;
             this.setData({ hint: 'タップ: 画面切替 / スワイプ: 時刻' });
             this.applyView();
             return;
@@ -173,6 +234,18 @@ export default {
     const views = this._modes[this._mode].views;
     const v = views[this._view % views.length];
     const f = this._frames[this._fIdx] || this._frames[0];
+    const ready = this._mode === 'home' ? this._homeReady : this._hereReady;
+    if (!ready) {
+      // Map-only stage: the base map for the current view. Scale
+      // taps and time swipes already took effect on _view/_fIdx
+      // and will apply to the frame when it lands.
+      const bust = this._mode === 'here' && this._basesAt ? ('?v=' + this._basesAt) : '';
+      this.setData({
+        imgSrc: this._base + 'base_' + v.key + '.png' + bust,
+        status: v.label + ' の地図（作成中…）'
+      });
+      return;
+    }
     const suffix = f.off ? ('_p' + f.off) : '';
     const q = f.vt ? ('?v=' + f.vt) : '';
     this.setData({

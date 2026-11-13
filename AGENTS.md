@@ -11,7 +11,12 @@ step only (forecast frames). rdr-b3 = swipe steps frame time
 /radar/request, and polls meta-here.json until frames centred on
 the current location are ready. rdr-b4 = generation is on demand:
 on open the page also POSTs a bare /radar/request and repaints
-when the refreshed home frame lands.
+when the refreshed home frame lands. rdr-b5 = staged display:
+at open the page shows the base map only (base_<view>.png —
+static per centre+zoom); scale taps swap the base at once, time
+swipes are remembered, and the rendered frame replaces the map
+when ready (home: meta answered_at; here: base-meta-here.json
+lands first, then meta-here.json).
 
 Pipeline: generation lives INSIDE the laptop listener
 (GlassesChatServer's RadarGen, a Java port of radar_gen.py).
