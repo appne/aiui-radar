@@ -5,13 +5,17 @@
 </script>
 
 <script setup>
-// rdr-b3: dedicated rain-radar agent (2026-11-13).
-// - Home mode: pre-generated frames (VM hook, every 5 min) centred
-//   on home; views home (z11) / wide (z9).
-// - Here mode: on open, the page reads navigator.geolocation,
-//   POSTs {lat,lon} to the laptop listener (/radar/request), and
-//   polls meta-here.json until the VM-side generator has rendered
-//   frames centred on the current location; views here / widehere.
+// rdr-b4: dedicated rain-radar agent (2026-11-13).
+// Generation is ON DEMAND inside the laptop listener (RadarGen):
+// nothing is rendered periodically. On open the page POSTs a bare
+// /radar/request to trigger a home-set refresh (the listener
+// regenerates only when its stored frame is stale), and polls
+// meta.json to repaint when the fresh frame lands.
+// - Home mode: frames centred on home; views home (z11) / wide (z9).
+// - Here mode: the page reads navigator.geolocation, POSTs
+//   {lat,lon} to the listener (/radar/request), and polls
+//   meta-here.json until the listener has rendered frames centred
+//   on the current location; views here / widehere.
 //   Falls back to home mode when geolocation or generation fails.
 // - Gestures (temple model from kensho b16): tap (GlobalHook arm +
 //   Enter confirm, or a bare Enter) cycles the view; swipe
@@ -21,7 +25,7 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b3',
+    build: 'rdr-b4',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 画面切替 / スワイプ: 時刻'
@@ -49,7 +53,38 @@ export default {
   pollMs: 3000,
   onLoad() {
     this.loadMeta('home', () => this.applyView());
+    this.postOpenPing();
+    this.pollHomeFresh();
     this.startHere();
+  },
+  postOpenPing() {
+    try {
+      wx.request({
+        url: this._base + 'request',
+        method: 'POST',
+        header: { 'X-Talk-Token': this._token, 'content-type': 'application/json' },
+        data: {},
+        success: () => {},
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+  // Repaint the home view when the listener's on-demand refresh
+  // lands a newer frame; keeps the current swipe offset.
+  pollHomeFresh() {
+    let left = 40;
+    const step = () => {
+      if (left-- <= 0) return;
+      this.loadMeta('home', (m) => {
+        if (this._mode === 'home' && m && Array.isArray(m.frames) && m.frames.length
+            && m.frames[0].vt !== (this._homeVt || '')) {
+          this._homeVt = m.frames[0].vt;
+          this.applyView();
+        }
+        this._homeTimer = setTimeout(step, this.pollMs);
+      });
+    };
+    this._homeTimer = setTimeout(step, this.pollMs);
   },
   loadMeta(mode, cb) {
     try {
