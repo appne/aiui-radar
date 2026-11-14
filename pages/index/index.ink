@@ -5,6 +5,12 @@
 </script>
 
 <script setup>
+// rdr-b8: BACK key reloads (2026-11-14, user request). Back is
+// the first stage of the OS exit gesture, but it is delivered
+// to the app first (seen in another app), so the page consumes
+// it and re-runs the whole open sequence: back to the fixed
+// set at the current frame, fresh /radar/request, geolocation
+// and polling restarted.
 // rdr-b7: dedicated rain-radar agent (2026-11-13).
 // Changes from b6 (user device feedback):
 // - Tap lockout: one physical temple tap could advance the view
@@ -48,10 +54,10 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b7',
+    build: 'rdr-b8',
     status: '読込中…',
     imgSrc: '',
-    hint: 'タップ: 画面切替 / スワイプ: 時刻'
+    hint: 'タップ: 切替 / スワイプ: 時刻 / バック: 再読込'
   },
   _base: 'http://100.124.235.107:18765/radar/',
   _token: 'gchat-4c1d9a72',
@@ -234,7 +240,7 @@ export default {
             if (this._fIdx >= m.frames.length) this._fIdx = 0;
             this._frames = m.frames;
             this._hereReady = true;
-            this.setData({ hint: 'タップ: 画面切替 / スワイプ: 時刻' });
+            this.setData({ hint: 'タップ: 切替 / スワイプ: 時刻 / バック: 再読込' });
             this.applyView();
             return;
           }
@@ -269,6 +275,33 @@ export default {
       status: v.label + '  ' + (f.off ? ('+' + f.off + '分予測 ' + f.display) : (f.display + ' の雨雲'))
     });
   },
+  // BACK key: full reload, identical to closing and reopening
+  // the agent — reset to the fixed set at the current frame,
+  // drop all ready flags, stop every poll, then run the open
+  // sequence again (request ping, home poll, geolocation).
+  reload() {
+    if (this._tapTimer) { clearTimeout(this._tapTimer); this._tapTimer = null; }
+    if (this._homeTimer) { clearTimeout(this._homeTimer); this._homeTimer = null; }
+    if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
+    if (this._baseTimer) { clearTimeout(this._baseTimer); this._baseTimer = null; }
+    this._mode = 'home';
+    this._view = 0;
+    this._fIdx = 0;
+    this._frames = [{ off: 0, vt: '', display: '' }];
+    this._paintedVt = '';
+    this._homeReady = false;
+    this._hereReady = false;
+    this._hereBaseReady = false;
+    this._openAt = Math.floor(Date.now() / 1000);
+    this.setData({ status: '再読込中…', hint: 'リロード中…' });
+    this.loadMeta('home', (m) => {
+      if (m && Array.isArray(m.frames) && m.frames.length) this._paintedVt = m.frames[0].vt;
+      this.applyView();
+    });
+    this.postOpenPing();
+    this.pollHomeFresh();
+    this.startHere();
+  },
   cycleView() {
     const views = this._modes[this._mode].views;
     this._view = (this._view + 1) % views.length;
@@ -291,6 +324,17 @@ export default {
   },
   onKeyUp(event) {
     const code = event && event.code;
+    const kc = event && (typeof event.keyCode === 'number' ? event.keyCode
+      : (typeof event.which === 'number' ? event.which : -1));
+    // BACK (rdr-b8): the name the runtime gives it is not pinned
+    // down, so accept the plausible set. Consuming it here keeps
+    // the OS exit gesture from firing on the first stage.
+    if (code === 'Backspace' || code === 'Escape' || code === 'BrowserBack'
+        || code === 'Back' || code === 'GoBack' || kc === 4 || kc === 27) {
+      event.preventDefault();
+      this.reload();
+      return;
+    }
     if (code === 'GlobalHook') {
       event.preventDefault();
       if (Date.now() < this._tapLockUntil) return;

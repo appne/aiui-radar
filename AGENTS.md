@@ -22,7 +22,16 @@ one physical tap had been advancing twice), zooms reworked
 (z9 regional view dropped; both modes are near z12 / wide z11
 with the local label set only), and the fixed set is centred
 on KYOTO STATION instead of home (screenshots must not give
-away the home location; view keys stay home/wide).
+away the home location; view keys stay home/wide). rdr-b8 =
+BACK key reloads: back is the first stage of the OS exit
+gesture but reaches the app first, so the page consumes it
+(Backspace/Escape/BrowserBack/Back/GoBack or keyCode 4/27)
+and re-runs the full open sequence (reset to the fixed set
+at the current frame, fresh request, geolocation, polling).
+After b7: base maps also draw major roads (Natural Earth 10m Japan
+extract — expressways + main national routes, 103 KB
+roads.geojson served from the listener's radar dir; made by
+radar/data/make_roads.py; server-side only, no page change).
 
 Pipeline: generation lives INSIDE the laptop listener
 (GlassesChatServer's RadarGen, a Java port of radar_gen.py).
