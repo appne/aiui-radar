@@ -5,6 +5,12 @@
 </script>
 
 <script setup>
+// rdr-b9: BACK twice to exit (2026-11-14, device report on b8:
+// the reload worked but the page ate EVERY back press, so the
+// AIUI exit sequence never ran and the agent could not be
+// closed). Now: a back press more than 3 s after the last
+// reload consumes + reloads; a second press inside 3 s is NOT
+// consumed and passes through to the OS exit.
 // rdr-b8: BACK key reloads (2026-11-14, user request). Back is
 // the first stage of the OS exit gesture, but it is delivered
 // to the app first (seen in another app), so the page consumes
@@ -54,7 +60,7 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b8',
+    build: 'rdr-b9',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 切替 / スワイプ: 時刻 / バック: 再読込'
@@ -75,6 +81,7 @@ export default {
   _frames: [{ off: 0, vt: '', display: '' }],
   _tapTimer: null,
   _tapLockUntil: 0,
+  _lastReloadAt: 0,
   _pollTimer: null,
   _pollLeft: 0,
   _hereReqAt: 0,
@@ -293,7 +300,7 @@ export default {
     this._hereReady = false;
     this._hereBaseReady = false;
     this._openAt = Math.floor(Date.now() / 1000);
-    this.setData({ status: '再読込中…', hint: 'リロード中…' });
+    this.setData({ status: '再読込中…', hint: 'もう一度バック: 終了' });
     this.loadMeta('home', (m) => {
       if (m && Array.isArray(m.frames) && m.frames.length) this._paintedVt = m.frames[0].vt;
       this.applyView();
@@ -326,12 +333,16 @@ export default {
     const code = event && event.code;
     const kc = event && (typeof event.keyCode === 'number' ? event.keyCode
       : (typeof event.which === 'number' ? event.which : -1));
-    // BACK (rdr-b8): the name the runtime gives it is not pinned
-    // down, so accept the plausible set. Consuming it here keeps
-    // the OS exit gesture from firing on the first stage.
+    // BACK (rdr-b8/b9): the name the runtime gives it is not
+    // pinned down, so accept the plausible set. First press
+    // consumes + reloads; a second press within 3 s is left
+    // unconsumed so the OS exit sequence can proceed (b8 ate
+    // every press and the agent became unclosable).
     if (code === 'Backspace' || code === 'Escape' || code === 'BrowserBack'
         || code === 'Back' || code === 'GoBack' || kc === 4 || kc === 27) {
+      if (Date.now() - this._lastReloadAt < 3000) return;
       event.preventDefault();
+      this._lastReloadAt = Date.now();
       this.reload();
       return;
     }

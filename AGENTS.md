@@ -28,6 +28,10 @@ gesture but reaches the app first, so the page consumes it
 (Backspace/Escape/BrowserBack/Back/GoBack or keyCode 4/27)
 and re-runs the full open sequence (reset to the fixed set
 at the current frame, fresh request, geolocation, polling).
+rdr-b9 = back twice to exit: b8 ate every back press and the
+agent became unclosable (device report); now a second press
+within 3 s of a reload is NOT consumed and passes through to
+the OS exit sequence.
 After b7: base maps also draw major roads (Natural Earth 10m Japan
 extract — expressways + main national routes, 103 KB
 roads.geojson served from the listener's radar dir; made by
