@@ -43,6 +43,17 @@ compressed from G<=64 to G<=32 (linear x0.5, water pinned to
 G2: landuse shades 2/10/14/16/20/24 in landuse.json, prefecture
 rings G23, roads G27/31 in RadarGen) at the user's pick from
 rendered samples; labels and the centre marker stay bright.
+Also server-side the same night: JMA hrpns tiles exist only
+up to z10 (z11/z12 return transparent tiles), so RadarGen now
+fetches at z10 and upscales (nearest-neighbour) — before this
+fix no real rain was ever rendered; and the centre marker +
+place labels are drawn AGAIN over the rain (View.drawMarks)
+so echoes cannot erase them.
+rdr-b11 = a third here-mode view, detail (現在地・詳細): the
+current location at 1.5x the near zoom — server-side a z12
+View with scale 1.5 (base_detail.png, detail[_pN].png). The
+here tap cycle is here -> widehere -> detail -> here. The
+home (fixed) cycle stays two views.
 After b7: base maps also draw major roads (Natural Earth 10m Japan
 extract — expressways + main national routes, 103 KB
 roads.geojson served from the listener's radar dir; made by

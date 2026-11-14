@@ -5,6 +5,11 @@
 </script>
 
 <script setup>
+// rdr-b11: a third here-mode view, 詳細 (detail): the current
+// location at 1.5x the near zoom (user request 2026-11-14).
+// The here cycle is now here -> widehere -> detail -> here.
+// Server-side the detail view is the z12 View at scale 1.5
+// (base_detail.png / detail[_pN].png from RadarGen).
 // rdr-b10: never blank the picture during an update
 // (2026-11-14, user request). Until b9, any not-ready moment
 // (reload, here-mode staging) swapped the <image> back to the
@@ -70,7 +75,7 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b10',
+    build: 'rdr-b11',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 切替 / スワイプ: 時刻 / バック: 再読込'
@@ -83,7 +88,8 @@ export default {
       { key: 'wide', label: '京都駅・広域' } ] },
     here: { meta: 'meta-here.json', views: [
       { key: 'here', label: '現在地' },
-      { key: 'widehere', label: '現在地・広域' } ] }
+      { key: 'widehere', label: '現在地・広域' },
+      { key: 'detail', label: '現在地・詳細' } ] }
   },
   _mode: 'home',
   _view: 0,
