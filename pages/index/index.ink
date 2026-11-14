@@ -5,6 +5,16 @@
 </script>
 
 <script setup>
+// rdr-b10: never blank the picture during an update
+// (2026-11-14, user request). Until b9, any not-ready moment
+// (reload, here-mode staging) swapped the <image> back to the
+// base map, and every swap left a blank while the PNG loaded.
+// Now applyView remembers the last painted rain frame: while
+// the current mode is not ready, a session that has already
+// painted a frame KEEPS showing it (status switches to
+// （更新中…）) and swaps exactly once when the fresh frame is
+// ready. The base-map stage remains only for a cold open,
+// when nothing has been painted yet.
 // rdr-b9: BACK twice to exit (2026-11-14, device report on b8:
 // the reload worked but the page ate EVERY back press, so the
 // AIUI exit sequence never ran and the agent could not be
@@ -60,7 +70,7 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b9',
+    build: 'rdr-b10',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 切替 / スワイプ: 時刻 / バック: 再読込'
@@ -89,6 +99,7 @@ export default {
   _hereLon: null,
   _openAt: 0,
   _paintedVt: '',
+  _lastFrameSrc: '',
   _homeReady: false,
   _hereReady: false,
   _hereBaseReady: false,
@@ -265,9 +276,17 @@ export default {
     const f = this._frames[this._fIdx] || this._frames[0];
     const ready = this._mode === 'home' ? this._homeReady : this._hereReady;
     if (!ready) {
-      // Map-only stage: the base map for the current view. Scale
-      // taps and time swipes already took effect on _view/_fIdx
-      // and will apply to the frame when it lands.
+      if (this._lastFrameSrc) {
+        // rdr-b10: a frame was already painted this session —
+        // keep showing it until the fresh frame is ready, and
+        // swap exactly once then. Only the status changes.
+        this.setData({ status: v.label + '（更新中…）' });
+        return;
+      }
+      // Map-only stage (cold open): the base map for the
+      // current view. Scale taps and time swipes already took
+      // effect on _view/_fIdx and will apply to the frame
+      // when it lands.
       const bust = this._mode === 'here' && this._basesAt ? ('?v=' + this._basesAt) : '';
       this.setData({
         imgSrc: this._base + 'base_' + v.key + '.png' + bust,
@@ -277,8 +296,10 @@ export default {
     }
     const suffix = f.off ? ('_p' + f.off) : '';
     const q = f.vt ? ('?v=' + f.vt) : '';
+    const src = this._base + v.key + suffix + '.png' + q;
+    this._lastFrameSrc = src;
     this.setData({
-      imgSrc: this._base + v.key + suffix + '.png' + q,
+      imgSrc: src,
       status: v.label + '  ' + (f.off ? ('+' + f.off + '分予測 ' + f.display) : (f.display + ' の雨雲'))
     });
   },
@@ -286,6 +307,9 @@ export default {
   // the agent — reset to the fixed set at the current frame,
   // drop all ready flags, stop every poll, then run the open
   // sequence again (request ping, home poll, geolocation).
+  // Since rdr-b10 the picture itself is NOT dropped: applyView
+  // keeps the last painted frame on screen until the fresh
+  // one is ready.
   reload() {
     if (this._tapTimer) { clearTimeout(this._tapTimer); this._tapTimer = null; }
     if (this._homeTimer) { clearTimeout(this._homeTimer); this._homeTimer = null; }

@@ -32,6 +32,17 @@ rdr-b9 = back twice to exit: b8 ate every back press and the
 agent became unclosable (device report); now a second press
 within 3 s of a reload is NOT consumed and passes through to
 the OS exit sequence.
+rdr-b10 = never blank the picture during an update (user
+request 2026-11-14): applyView remembers the last painted
+rain frame (_lastFrameSrc); while a mode is not ready, a
+session that has painted a frame keeps showing it (status
+（更新中…）) and swaps exactly once when the fresh frame is
+ready. The base-map stage remains only for a cold open.
+Server-side the same day: the base-map luminance budget was
+compressed from G<=64 to G<=32 (linear x0.5, water pinned to
+G2: landuse shades 2/10/14/16/20/24 in landuse.json, prefecture
+rings G23, roads G27/31 in RadarGen) at the user's pick from
+rendered samples; labels and the centre marker stay bright.
 After b7: base maps also draw major roads (Natural Earth 10m Japan
 extract — expressways + main national routes, 103 KB
 roads.geojson served from the listener's radar dir; made by
