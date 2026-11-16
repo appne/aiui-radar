@@ -20,6 +20,11 @@
 // （更新中…）) and swaps exactly once when the fresh frame is
 // ready. The base-map stage remains only for a cold open,
 // when nothing has been painted yet.
+// rdr-b12: BACK right after an interaction also exits
+// (2026-11-16, user request). A tap or swipe arms the same
+// 3 s pass-through window the reload-BACK arms: BACK within
+// 3 s of the last tap/swipe is NOT consumed, so e.g. swipe
+// then BACK leaves at once instead of reloading first.
 // rdr-b9: BACK twice to exit (2026-11-14, device report on b8:
 // the reload worked but the page ate EVERY back press, so the
 // AIUI exit sequence never ran and the agent could not be
@@ -75,7 +80,7 @@
 // image, nothing essential below it.
 export default {
   data: {
-    build: 'rdr-b11',
+    build: 'rdr-b12',
     status: '読込中…',
     imgSrc: '',
     hint: 'タップ: 切替 / スワイプ: 時刻 / バック: 再読込'
@@ -98,6 +103,7 @@ export default {
   _tapTimer: null,
   _tapLockUntil: 0,
   _lastReloadAt: 0,
+  _lastInteractAt: 0,
   _pollTimer: null,
   _pollLeft: 0,
   _hereReqAt: 0,
@@ -357,20 +363,23 @@ export default {
   // tap, ignore tap gestures for 700 ms.
   fireTap() {
     this._tapLockUntil = Date.now() + 700;
+    this._lastInteractAt = Date.now();
     this.cycleView();
   },
   onKeyUp(event) {
     const code = event && event.code;
     const kc = event && (typeof event.keyCode === 'number' ? event.keyCode
       : (typeof event.which === 'number' ? event.which : -1));
-    // BACK (rdr-b8/b9): the name the runtime gives it is not
-    // pinned down, so accept the plausible set. First press
-    // consumes + reloads; a second press within 3 s is left
+    // BACK (rdr-b8/b9/b12): the name the runtime gives it is
+    // not pinned down, so accept the plausible set. First press
+    // consumes + reloads; a press within 3 s of that reload —
+    // or within 3 s of the last tap/swipe (b12) — is left
     // unconsumed so the OS exit sequence can proceed (b8 ate
     // every press and the agent became unclosable).
     if (code === 'Backspace' || code === 'Escape' || code === 'BrowserBack'
         || code === 'Back' || code === 'GoBack' || kc === 4 || kc === 27) {
-      if (Date.now() - this._lastReloadAt < 3000) return;
+      if (Date.now() - this._lastReloadAt < 3000
+          || Date.now() - this._lastInteractAt < 3000) return;
       event.preventDefault();
       this._lastReloadAt = Date.now();
       this.reload();
@@ -393,6 +402,7 @@ export default {
     if (code === 'ArrowUp' || code === 'ArrowDown') {
       event.preventDefault();
       if (this._tapTimer) { clearTimeout(this._tapTimer); this._tapTimer = null; }
+      this._lastInteractAt = Date.now();
       // Temple swipes: forward (ArrowUp) = later, back = earlier.
       this.stepTime(code === 'ArrowUp' ? 1 : -1);
     }

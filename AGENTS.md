@@ -54,6 +54,98 @@ current location at 1.5x the near zoom — server-side a z12
 View with scale 1.5 (base_detail.png, detail[_pN].png). The
 here tap cycle is here -> widehere -> detail -> here. The
 home (fixed) cycle stays two views.
+rdr-b12 = BACK right after an interaction exits (user
+request 2026-11-16): taps (fireTap) and swipes stamp
+_lastInteractAt, and the BACK branch passes through when
+pressed within 3 s of the last tap/swipe as well as within
+3 s of the last reload — so swipe/tap then BACK leaves at
+once instead of reloading first. Zaisen got the same
+change as zai-b40.
+Frame layout since 2026-11-15 (server-side only, no page
+change): the image is still 448x286, but the map is now
+404x286 (full height) and the legend is a VERTICAL column
+in the right 44 px (strongest class at top, mm/h numbers
+inside the blocks) — the old 36 px bottom band is gone.
+Rain compositing is ADDITIVE since then: pixel = terrain G
+(0..32) + rain value, clamped at 255, so the terrain stays
+visible under a full rain cover (user design, from rendered
+samples). The rain ladder was 80 + strength*140 (G80..220)
+until 2026-11-15 evening, when the floor was lowered to
+40 + strength*180 (G40..220, top unchanged) at the user's
+request so light rain sits dimmer; the legend swatches use
+the same formula. Backup: GlassesChatServer.java.bak-20261115-pre-g40. Land-use
+meshes are built ON DEMAND per primary mesh (Kyoto asset
+stays prebuilt): RadarGen.ensureLanduse downloads the
+L03-b GML zip from MLIT and caches landuse-<code>.json in
+the radar dir (~1.4 MB per mesh). Label rendering note:
+drawMarks draws each label's outline in pure black (G0)
+at the 8 neighbouring offsets, AFTER the rain composite,
+so production frames keep a G0 outline over any rain.
+Offline sample generators must lift the outline into the
+marks mask too (dilate the core-colour mask), or the
+composite dissolves the outline into the rain colour and
+the labels look unreadable on bright fields — a sample
+bug, not a production one (hit 2026-11-15, kensho b27
+samples v1; fixed in v2 by dilating 2 px, which reads
+slightly heavier than production's 1 px outline).
+Place labels are no longer Kyoto-only (2026-11-15):
+besides the curated LABELS_HOME (prio 0-2), drawMarks
+merges AUTOMATIC labels from labels_auto.tsv in the
+radar dir (22,428 entries, 0.86 MB; built by
+radar/data/make_labels_auto.py from KSJ N02-25 stations
+— same-name features chain-merged within ~500 m pooling
+lines; prio 3 = Shinkansen or >=3 lines, 4 = 2 lines,
+6 = 1 line — and KSJ P12-14 tourism points, prio 5,
+MultiPoint centroid anchors, name-filtered: >12 chars or
+containing 株式会社/有限会社/一般公開/まつり are dropped).
+Auto candidates are pre-sorted by distance from the
+view centre (the stable prio sort keeps that order
+within a tier), dropped within ~350 m of a curated
+label, capped at 10 drawn per view, and skipped when
+the name fits on neither side of its dot. P12 coverage
+is uneven by prefecture (Niigata ~2k resources, Aichi
+6) — that is the published data, not a bug. Server
+76,6xx B (backups …bak-20261115-pre-autolabels and
+…-autolabels-v1); verified server-side on Tokyo
+Station (major stations), Amanohashidate (tourism)
+and the Kyoto home view (curated intact, no dupes).
+Collision clearance and scenic quota (2026-11-15
+night, user-approved after three samples): text-vs-
+text clearance is 5 px (was 2 px — too dense at 15
+labels); every dot-involved test stays exact-overlap.
+A full 15 px margin was sampled and rejected: it
+thinned even the curated Kyoto set. After the main
+pass, if fewer than 5 tourism labels (prio 5) were
+drawn, a guarantee pass retries the missed ones in
+distance order with text placements (R,0) (L,0)
+(R,-14) (L,-14) (R,+14) (L,+14) — side flips and
+vertical TEXT shifts only, the dot stays true — until
+5 are drawn; these draws ignore the 10-slot cap, so a
+frame can carry 15 auto labels. Placement lives in
+View.placeLabel, shared by both passes. Server
+78,766 B (backup …bak-20261115-pre-poiquota);
+production-verified on Tokyo (10 stations + 5 scenic:
+上野動物園・東京国立近代美術館・隅田川橋梁群・東京タワー
+ほか), Kyoto home (16 labels, curated intact) and
+Amanohashidate (all-scenic frame).
+Event-name filter (2026-11-16, user request): P12
+also registers EVENTS as tourism points (祇園祭,
+fireworks shows, marathons) - not place names, so
+the builder's name filter now also drops names
+containing 祭・花火・大会・フェスティバル・マラソン・
+駅伝・カーニバル・盆踊り・イベント・博覧会・コンテスト・
+グランプリ・コンサート, plus an exact-name denylist
+(ＫＡＲＡ−１ = the KARA-1グランプリ spicy-food contest
+in Muko, truncated in P12 so no pattern catches it).
+ライブ is NOT a pattern (would kill ドライブウェイ /
+ドライブイン). Shrine festivals drop too (events;
+the shrines themselves stay). Applied by post-
+filtering the TSV: 22,428 -> 20,986 rows (tourism
+13,399 -> 11,957); builder carries the same rules
+for rebuilds. Verified on the Kyoto home base:
+KARA-1 gone, 向日市天文館 appears in its area,
+curated set intact. Backups: labels_auto.tsv
+.bak-20261116-pre-eventfilter (VM + laptop).
 After b7: base maps also draw major roads (Natural Earth 10m Japan
 extract — expressways + main national routes, 103 KB
 roads.geojson served from the listener's radar dir; made by
